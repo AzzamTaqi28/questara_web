@@ -1,0 +1,4 @@
+
+> @questara/admin@0.1.0 typecheck /Users/macbook/Projects/self/travel-apps/apps/admin
+> tsc --noEmit
+

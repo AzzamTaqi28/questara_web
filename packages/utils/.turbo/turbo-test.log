@@ -1,0 +1,14 @@
+
+> @questara/utils@0.1.0 test /Users/macbook/Projects/self/travel-apps/packages/utils
+> vitest run
+
+
+ RUN  v3.2.6 /Users/macbook/Projects/self/travel-apps/packages/utils
+
+ ✓ src/distance.test.ts (3 tests) 2ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  12:53:19
+   Duration  502ms (transform 101ms, setup 0ms, collect 32ms, tests 2ms, environment 0ms, prepare 121ms)
+

@@ -1,0 +1,4 @@
+
+> @questara/api@0.1.0 typecheck /Users/macbook/Projects/self/travel-apps/apps/api
+> tsc --noEmit
+

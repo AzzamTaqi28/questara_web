@@ -1,0 +1,14 @@
+
+> @questara/api@0.1.0 test /Users/macbook/Projects/self/travel-apps/apps/api
+> vitest run
+
+
+ RUN  v3.2.6 /Users/macbook/Projects/self/travel-apps/apps/api
+
+ ✓ src/test/smoke.test.ts (1 test) 1ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  12:53:19
+   Duration  432ms (transform 60ms, setup 0ms, collect 26ms, tests 1ms, environment 0ms, prepare 148ms)
+

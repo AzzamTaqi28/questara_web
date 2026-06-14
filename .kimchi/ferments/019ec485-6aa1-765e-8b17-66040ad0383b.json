@@ -1,0 +1,621 @@
+{
+  "id": "019ec485-6aa1-765e-8b17-66040ad0383b",
+  "name": "Build Questara MVP",
+  "description": "Build the full Questara MVP monorepo based on the PRD v0.2. This includes:\n\n1. Project scaffold (Expo React Native mobile app, Next.js admin app, shared packages for types/utils/ui/ai, Supabase migrations + edge functions)\n2. Database layer (Supabase Postgres migrations, RLS policies, seed data for one Indonesian city, shared TypeScript types)\n3. Mobile browse flow (Auth, CitySelector, Home, QuestList, QuestDetail, PlaceDetail, Passport screens)\n4. GPS check-in and stamp awarding (Edge function for check-in validation, Haversine distance, XP updates, duplicate prevention)\n5. Admin CMS (Dashboard, Cities/Places/Events/Quests CRUD, Quest builder, Stamps CRUD)\n6. AI itinerary generation (Provider abstraction, mock provider, generate-itinerary edge function, mobile screens)\n7. Submissions (Mobile submit screen, admin review page)\n8. Polish (Share card, loading/error states, analytics, basic tests)\n\nTarget city: Surabaya (or pick one with dense cultural places).\nStack: Expo React Native + TypeScript, Next.js + TypeScript, Supabase Auth/Postgres/Storage/Edge Functions, Mapbox or Google Maps, provider-agnostic AI wrapper with mock mode.",
+  "status": "planned",
+  "worktree": {
+    "path": "/Users/macbook/Projects/self/travel-apps"
+  },
+  "scoping": {
+    "goal": {
+      "answer": "Build a complete gamified local discovery MVP (mobile app + admin CMS + standalone REST API + Postgres migrations) for one Indonesian city, featuring curated quests, GPS check-ins, digital stamps, AI-assisted itinerary generation, and an admin content management system.",
+      "confirmedAt": "2026-06-14T05:28:41.639Z"
+    },
+    "criteria": {
+      "answer": "Backend monorepo scaffolded with apps/admin (Next.js + TypeScript), apps/api (Hono/Node.js + Docker), packages/types, packages/utils, packages/ui, packages/ai, and migrations/. Mobile at apps/mobile as separate git repo. pnpm install and typecheck pass for backend packages; mobile installs independently.\nSQL migrations and seed data for Postgres authored in migrations/ covering all 12 PRD tables, indexes. Seed data includes ≥20 Surabaya places, ≥5 quests, ≥20 stamps, ≥5 events. Migrations run cleanly against a fresh Postgres instance using psql or Drizzle.\nStandalone REST API server (apps/api) built with Hono, exposed as REST endpoints for auth (JWT verification via Supabase Auth), cities, places, events, quests, quest stops, stamps, check-ins, itinerary generation, submissions, and user profiles. Includes Docker and auth middleware. Connects to Postgres via connection string.\nNext.js admin dashboard (apps/admin) with role-based admin access. Pages: Dashboard (metrics), Cities CRUD, Places CRUD, Events CRUD, Quests CRUD + Quest Builder (reorder stops, hints), Stamps CRUD, Submissions review (approve/reject/convert), Users overview. Admin can create, publish, and unpublish quests via API.\nExpo React Native mobile app (apps/mobile, separate git repo) with screens: Login/Register, CitySelector, Home, QuestList, QuestDetail, PlaceDetail, CheckIn, Passport, ItineraryGenerator, ItineraryResult, SubmitEvent/Place, Profile. Calls standalone REST API via custom client; does not use Supabase client SDK for DB access. Works with seeded data and has mock fallback.\nCheck-in logic end-to-end: API POST /check-in calculates Haversine distance (≤200m radius), inserts check-in record, awards stamp and +50 XP server-side (unique constraint prevents duplicates), detects quest completion and awards +200 XP once. Mobile shows stamp-earned modal on success and distance/retry message on failure. Passport screen reflects newly earned stamps.\nAI itinerary generation: packages/ai contains provider abstraction, mock provider, and strict JSON schema. API POST /generate-itinerary fetches DB context, calls mock AI, validates JSON output contains only real place_ids from DB, saves to itineraries table, falls back to heuristic route if AI fails. Mobile screens allow input and display generated timeline with warnings.\nPolish and demo readiness: Event/place submission mobile screen allows authenticated users to submit; admin review page handles approve/reject/convert. Quest completion share card created. Loading, empty, and error states on critical mobile screens. Basic tests for distance calculation, check-in logic, quest progress, and itinerary schema. No server secrets in mobile client. App runs end-to-end with Surabaya seed data for demo.",
+      "confirmedAt": "2026-06-14T05:28:41.639Z"
+    },
+    "constraints": {
+      "answer": "Mobile must be a separate git repo inside apps/mobile/ with its own .git directory, Backend API must be a standalone Hono server (not Supabase Edge Functions), Dockerized for Dokploy, Mobile must not use Supabase client SDK for database access; must call REST API endpoints, No Row Level Security — authorization is handled at API middleware level, No file upload or storage service in MVP, No server secrets (DB connection strings, AI keys) may be shipped in mobile client bundles, No payments, hotel booking, social DMs, or NFT features",
+      "confirmedAt": "2026-06-14T05:28:41.639Z"
+    },
+    "assumptions": {
+      "answer": "Launch city is Surabaya (PRD default, dense cultural heritage sites); Mobile and backend share types manually (not via published package); packages/types is source of truth, mobile copies needed types; User sets up their own Postgres database in Dokploy; we provide only migrations and seed SQL; Supabase Auth (managed, free tier) is used for authentication; API server verifies JWT tokens but does not manage auth itself; Images are stored as external URLs (text fields) for MVP — no file upload or storage service needed; Google Maps is used only as external navigation links, not embedded in-app for MVP; Mock AI provider is default; real OpenAI/Anthropic integration is optional post-MVP; Guest browsing is allowed; login required only for check-in, passport, itinerary saving, and submissions; Check-in radius is fixed at 200 meters globally for MVP; All users can submit events/places; admin reviews all submissions",
+      "confirmedAt": "2026-06-14T05:28:41.639Z"
+    },
+    "phases": {
+      "answer": "Backend Scaffold & Database, Auth & Shared Services, API Core Routes, Admin CMS, Mobile App, Polish & QA",
+      "confirmedAt": "2026-06-14T05:28:41.639Z"
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "index": 1,
+      "name": "Backend Scaffold & Database",
+      "goal": "A runnable backend stack: pnpm dev starts API and admin locally; docker-compose up starts API + Postgres; migrations run cleanly against fresh DB; seeded data exists.",
+      "description": "Set up the backend monorepo (pnpm workspace): apps/api (Hono skeleton + Dockerfile), apps/admin (Next.js skeleton), packages/types/utils/ui/ai (scaffolded), migrations/ directory. Write all Postgres SQL migrations for 12 tables + indexes. Write seed.sql with Surabaya data. Generate or author shared TypeScript types. Set up Hono server with basic middleware (CORS, logging, error handling), health check route, and connection to Postgres. Docker and local dev (docker-compose) should work.",
+      "budget": "150k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Create root monorepo with pnpm-workspace.yaml and turbo.json",
+          "status": "pending",
+          "verification": {
+            "command": "test -f pnpm-workspace.yaml && test -f turbo.json",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Set up apps/api with Hono, TypeScript, Dockerfile, docker-compose.yml, and healthz route",
+          "status": "pending",
+          "verification": {
+            "command": "cd apps/api && docker build -t questara-api . && docker run --rm questara-api node dist/index.js 2>&1 | grep -q 'healthz\\|listening'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Set up apps/admin with Next.js + TypeScript",
+          "status": "pending",
+          "verification": {
+            "command": "cd apps/admin && test -f next.config.js",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Create packages/types, packages/utils, packages/ui, packages/ai with package.json and tsconfig",
+          "status": "pending",
+          "verification": {
+            "command": "ls packages/*/package.json | wc -l | grep -q 4",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Write SQL migrations for all 12 PRD tables and indexes",
+          "status": "pending",
+          "verification": {
+            "command": "ls migrations/*.sql | wc -l | grep -q '[1-9]'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Write seed.sql with Surabaya data (≥20 places, ≥5 quests, ≥20 stamps, ≥5 events)",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'Surabaya' migrations/seed.sql && grep -c 'INSERT INTO places' migrations/seed.sql | grep -q '[2-9][0-9]'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-7",
+          "index": 7,
+          "description": "Set up Postgres connection from API (pg or Drizzle) and verify with docker-compose up",
+          "status": "pending",
+          "verification": {
+            "command": "docker-compose up -d && sleep 5 && curl -s http://localhost:3001/healthz | grep -q 'ok'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "index": 2,
+      "name": "Auth & Shared Services",
+      "goal": "API can verify Supabase JWT tokens, extract users, and enforce admin roles. Shared utilities and AI abstraction are importable across backend packages.",
+      "description": "Wire Supabase Auth integration into the API: JWT verification middleware, user extraction middleware, admin role middleware. Implement auth routes (/auth/me). Create shared auth utilities in packages/utils (Haversine distance, JWT helpers, validation). Create packages/ai scaffold with provider interface, mock provider, and itinerary schema. These shared packages will be consumed by both API and Admin.",
+      "budget": "100k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Implement Supabase JWT verification middleware in apps/api",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'jwt' apps/api/src/middleware/auth.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Implement auth routes in API: /auth/me (returns user profile), protected by JWT",
+          "status": "pending",
+          "verification": {
+            "command": "curl -s -H 'Authorization: Bearer fake' http://localhost:3001/auth/me | grep -q 'unauthorized'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Implement admin middleware that checks profiles.role = 'admin'",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'admin' apps/api/src/middleware/admin.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Move Haversine distance, date formatters, currency, validation to packages/utils with tests",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm test -- packages/utils 2>&1 | grep -q 'pass'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Create AI provider interface and MockAIProvider in packages/ai",
+          "status": "pending",
+          "verification": {
+            "command": "test -f packages/ai/src/provider.ts && test -f packages/ai/src/mockProvider.ts",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Create strict itinerary JSON schema in packages/ai with Zod or TS types",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'ItineraryPlan' packages/ai/src/schema.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "index": 3,
+      "name": "API Core Routes",
+      "goal": "Complete API with all business logic endpoints. Check-in, stamp awarding, and itinerary generation are fully functional and tested.",
+      "description": "Implement all CRUD REST routes in apps/api: cities, places, events, quests, quest stops, stamps, check-ins (POST with Haversine validation + stamp awarding + XP update), generate-itinerary (POST with mock AI + fallback), submissions (GET/POST), passport/profile endpoints. Include Zod input validation and proper error responses. Write integration tests for check-in and itinerary endpoints.",
+      "budget": "150k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Implement GET /cities, GET /cities/:id, GET /cities/:id/quests (published only)",
+          "status": "pending",
+          "verification": {
+            "command": "curl -s http://localhost:3001/cities | grep -q '\\['",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Implement GET /quests/:id (with stops ordered), GET /places/:id",
+          "status": "pending",
+          "verification": {
+            "command": "curl -s http://localhost:3001/quests/any | grep -q 'stops'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Implement POST /check-in with Haversine distance, stamp awarding, XP update, quest completion detection",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm test -- apps/api 2>&1 | grep -q 'check-in'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Implement POST /generate-itinerary with mock AI provider, schema validation, DB-only place IDs, fallback heuristic",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm test -- apps/api 2>&1 | grep -q 'itinerary'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Implement GET /passport (user's stamps + XP), GET/POST /itineraries",
+          "status": "pending",
+          "verification": {
+            "command": "curl -s -H 'Authorization: Bearer fake' http://localhost:3001/passport | grep -q 'unauthorized'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Implement GET/POST /submissions, admin endpoints for review",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'submissions' apps/api/src/routes/index.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "index": 4,
+      "name": "Admin CMS",
+      "goal": "Admin can fully manage content: create/edit/publish quests, review submissions, view metrics.",
+      "description": "Build the Next.js admin dashboard with pages: Dashboard (metric cards from API), Cities/Places/Events/Quests/Stamps CRUD (forms with Zod validation), Quest Builder (drag/drop or button-based reordering of stops, hints, required flags), Submissions review (list, approve/reject/convert). Admin routes are protected by admin middleware. Use shared UI components from packages/ui where applicable.",
+      "budget": "150k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Implement admin layout with sidebar navigation and admin role guard",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'admin' apps/admin/app/layout.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Implement Dashboard page with metric cards (users, quests, places, check-ins)",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'Dashboard' apps/admin/app/dashboard/page.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Implement CRUD pages for Cities, Places, Events, Stamps",
+          "status": "pending",
+          "verification": {
+            "command": "ls apps/admin/app/places/page.tsx apps/admin/app/events/page.tsx apps/admin/app/cities/page.tsx apps/admin/app/stamps/page.tsx 2>/dev/null | wc -l | grep -q 4",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Implement Quests CRUD + Quest Builder (add/remove/reorder stops, hints)",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'quest_stops\\|builder\\|reorder' apps/admin/app/quests/builder.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Implement Submissions review page with approve/reject/convert actions",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'submissions' apps/admin/app/submissions/page.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Wire admin pages to API endpoints with fetch/SWR",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'fetch\\|swr\\|axios\\|api' apps/admin/lib/api.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    },
+    {
+      "id": "phase-5",
+      "index": 5,
+      "name": "Mobile App",
+      "goal": "Mobile app connects to API, supports full browse-to-check-in flow, and is demo-ready.",
+      "description": "Create apps/mobile as a separate git repo with Expo + TypeScript + Expo Router. Build screens: Login/Register (via Supabase Auth SDK), CitySelector, Home (continue quest, featured quests), QuestList, QuestDetail (ordered stops), PlaceDetail, CheckIn (location permission + call to API), Passport (stamps grid + XP), ItineraryGenerator, ItineraryResult, SubmitEvent/Place, Profile. Create a thin API client in lib/api.ts that calls the Hono REST API with JWT from Supabase Auth. Add mock data fallback for development without the backend running. Focus on functional completeness over pixel-perfect UI.",
+      "budget": "150k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Initialize separate git repo for mobile with Expo Router, TypeScript, and Supabase Auth SDK",
+          "status": "pending",
+          "verification": {
+            "command": "test -d apps/mobile/.git && test -f apps/mobile/package.json",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Create API client in mobile (lib/api.ts) with JWT header injection",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'Authorization\\|Bearer' apps/mobile/lib/api.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Implement Auth screens (Login, Register) using Supabase Auth SDK",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'supabase.auth' apps/mobile/app/login.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "Implement CitySelector, Home, QuestList, QuestDetail, PlaceDetail screens calling API",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'api\\|fetch' apps/mobile/app/home.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Implement CheckIn screen with location permission, call POST /check-in, handle success/failure states",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'check-in\\|location' apps/mobile/app/check-in.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Implement Passport screen showing earned/locked stamps and XP",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'passport\\|stamp' apps/mobile/app/passport.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-7",
+          "index": 7,
+          "description": "Implement ItineraryGenerator and ItineraryResult screens",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'itinerary' apps/mobile/app/itinerary-generator.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-8",
+          "index": 8,
+          "description": "Implement SubmitEvent/Place screen and Profile screen",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'submit\\|submission' apps/mobile/app/submit.tsx 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-9",
+          "index": 9,
+          "description": "Add mock data fallback for offline development",
+          "status": "pending",
+          "verification": {
+            "command": "grep -q 'mock' apps/mobile/lib/mock.ts 2>/dev/null || true",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-10",
+          "index": 10,
+          "description": "Add loading, empty, and error states to critical screens",
+          "status": "pending",
+          "verification": {
+            "command": "grep -rn 'loading\\|empty\\|error' apps/mobile/app/ | head -20 | grep -q 'loading'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    },
+    {
+      "id": "phase-6",
+      "index": 6,
+      "name": "Polish & QA",
+      "goal": "MVP is demo-ready, all critical paths work, and basic tests pass.",
+      "description": "Add quest completion share card, tests (distance, check-in, quest progress, itinerary schema), fix any integration issues between mobile and API, verify the demo script end-to-end (sign up → select Surabaya → browse quest → check in → earn stamp → view passport → generate itinerary → admin shows new quest). Ensure no secrets are in mobile client. Final typecheck and lint pass.",
+      "budget": "100k tokens",
+      "parallel": false,
+      "status": "planned",
+      "steps": [
+        {
+          "id": "step-1",
+          "index": 1,
+          "description": "Add share card component for quest completion",
+          "status": "pending",
+          "verification": {
+            "command": "test -f apps/mobile/components/ShareCard.tsx",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-2",
+          "index": 2,
+          "description": "Write tests for packages/utils (distance, quest progress)",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm test -- packages/utils 2>&1 | grep -q 'pass'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-3",
+          "index": 3,
+          "description": "Write tests for apps/api (check-in endpoint, itinerary endpoint)",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm test -- apps/api 2>&1 | grep -q 'pass'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-4",
+          "index": 4,
+          "description": "End-to-end demo verification: sign up, browse, check in, earn stamp, passport, itinerary",
+          "status": "pending",
+          "verification": {
+            "command": "echo 'manual demo script verification'",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-5",
+          "index": 5,
+          "description": "Audit mobile bundle for server secrets",
+          "status": "pending",
+          "verification": {
+            "command": "! grep -r 'SUPABASE_SERVICE_ROLE_KEY\\|DATABASE_URL\\|OPENAI_API_KEY' apps/mobile/ 2>/dev/null",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        },
+        {
+          "id": "step-6",
+          "index": 6,
+          "description": "Run final pnpm typecheck and lint across backend monorepo",
+          "status": "pending",
+          "verification": {
+            "command": "pnpm typecheck && pnpm lint",
+            "retries": 2,
+            "retryDelayMs": 1000
+          },
+          "parallel": false
+        }
+      ]
+    }
+  ],
+  "decisions": [],
+  "memories": [],
+  "createdAt": "2026-06-14T05:05:38.465Z",
+  "updatedAt": "2026-06-14T05:28:41.639Z",
+  "goal": "Build a complete gamified local discovery MVP (mobile app + admin CMS + standalone REST API + Postgres migrations) for one Indonesian city, featuring curated quests, GPS check-ins, digital stamps, AI-assisted itinerary generation, and an admin content management system.",
+  "successCriteria": [
+    "Backend monorepo scaffolded with apps/admin (Next.js + TypeScript), apps/api (Hono/Node.js + Docker), packages/types, packages/utils, packages/ui, packages/ai, and migrations/. Mobile at apps/mobile as separate git repo. pnpm install and typecheck pass for backend packages; mobile installs independently.",
+    "SQL migrations and seed data for Postgres authored in migrations/ covering all 12 PRD tables, indexes. Seed data includes ≥20 Surabaya places, ≥5 quests, ≥20 stamps, ≥5 events. Migrations run cleanly against a fresh Postgres instance using psql or Drizzle.",
+    "Standalone REST API server (apps/api) built with Hono, exposed as REST endpoints for auth (JWT verification via Supabase Auth), cities, places, events, quests, quest stops, stamps, check-ins, itinerary generation, submissions, and user profiles. Includes Docker and auth middleware. Connects to Postgres via connection string.",
+    "Next.js admin dashboard (apps/admin) with role-based admin access. Pages: Dashboard (metrics), Cities CRUD, Places CRUD, Events CRUD, Quests CRUD + Quest Builder (reorder stops, hints), Stamps CRUD, Submissions review (approve/reject/convert), Users overview. Admin can create, publish, and unpublish quests via API.",
+    "Expo React Native mobile app (apps/mobile, separate git repo) with screens: Login/Register, CitySelector, Home, QuestList, QuestDetail, PlaceDetail, CheckIn, Passport, ItineraryGenerator, ItineraryResult, SubmitEvent/Place, Profile. Calls standalone REST API via custom client; does not use Supabase client SDK for DB access. Works with seeded data and has mock fallback.",
+    "Check-in logic end-to-end: API POST /check-in calculates Haversine distance (≤200m radius), inserts check-in record, awards stamp and +50 XP server-side (unique constraint prevents duplicates), detects quest completion and awards +200 XP once. Mobile shows stamp-earned modal on success and distance/retry message on failure. Passport screen reflects newly earned stamps.",
+    "AI itinerary generation: packages/ai contains provider abstraction, mock provider, and strict JSON schema. API POST /generate-itinerary fetches DB context, calls mock AI, validates JSON output contains only real place_ids from DB, saves to itineraries table, falls back to heuristic route if AI fails. Mobile screens allow input and display generated timeline with warnings.",
+    "Polish and demo readiness: Event/place submission mobile screen allows authenticated users to submit; admin review page handles approve/reject/convert. Quest completion share card created. Loading, empty, and error states on critical mobile screens. Basic tests for distance calculation, check-in logic, quest progress, and itinerary schema. No server secrets in mobile client. App runs end-to-end with Surabaya seed data for demo."
+  ],
+  "constraints": [
+    "Mobile must be a separate git repo inside apps/mobile/ with its own .git directory",
+    "Backend API must be a standalone Hono server (not Supabase Edge Functions), Dockerized for Dokploy",
+    "Mobile must not use Supabase client SDK for database access; must call REST API endpoints",
+    "No Row Level Security — authorization is handled at API middleware level",
+    "No file upload or storage service in MVP",
+    "No server secrets (DB connection strings, AI keys) may be shipped in mobile client bundles",
+    "No payments, hotel booking, social DMs, or NFT features"
+  ]
+}

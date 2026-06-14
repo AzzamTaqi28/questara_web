@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "composite": true
+  },
+  "include": [],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "apps/admin" },
+    { "path": "packages/ai" },
+    { "path": "packages/types" },
+    { "path": "packages/ui" },
+    { "path": "packages/utils" }
+  ],
+  "files": []
+}
